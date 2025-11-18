@@ -100,7 +100,12 @@ nextflow run batch_main.nf -c nextflow.config
 | `--ref` | `refSeq/*.fna` | Path to reference genome |
 | `--outdir` | `WGS_results` | Output directory |
 | `--busco_threshold` | `6.0` | BUSCO duplication threshold (%) |
-| `--lineage` | `bacteria_odb10` | BUSCO lineage dataset |
+| `--lineage` | `mammalia_odb10` | BUSCO lineage dataset |
+| `--threads` | `8` | Number of threads for most processes |
+| `--threads_assembly` | `4` | Threads for Flye assembly |
+| `--threads_polish` | `4` | Threads for Medaka polishing |
+| `--medaka_model` | `r1041_e82_400bps_fast_g632` | Medaka model for your sequencing chemistry |
+| `--assembly_input` | `results/polished/...` | Path to existing assembly (Post_Assembly.nf only) |
 
 ## Pipeline Workflows
 

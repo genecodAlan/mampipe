@@ -21,15 +21,25 @@ conda create -n vfc_env bwa samtools gatk bcftools  -c bioconda -c conda-forge
 // We will also skip the joint genotyping step as it is not necessary for single sample variant
 
 nextflow.enable.dsl=2
+
+// Default parameters
+params.ref = 'refSeq/*.fna'
+params.outdir = 'vfc_results'
+params.chopped_reads = 'results/chopped/*.fastq'
+params.threads = 4
+
 workflow {
-
+    // Validate inputs exist
+    if (!file(params.ref).exists()) {
+        error "ERROR: Reference genome not found at ${params.ref}"
+    }
+    if (!file(params.chopped_reads).exists()) {
+        error "ERROR: Chopped reads not found at ${params.chopped_reads}"
+    }
     
-    params.ref = 'ref_Seq'
-    params.outdir = 'vfc_results'
-
     //Establish Path to reference Sequence and Raw trimmed reads
-    reference = Channel.fromPath("${params.ref}/*.fna").first()
-    reads  = Channel.fromPath('results/chopped/*.fastq', checkIfExists: true)
+    reference = Channel.fromPath(params.ref).first()
+    reads  = Channel.fromPath(params.chopped_reads, checkIfExists: true)
 
     //Set up the reference index and dictionary for GATK
     bwa_index_out = bwa_index(reference)
@@ -88,7 +98,7 @@ process bwaAlign {
     
     script:
     """
-    bwa mem -t 4 -R "@RG\\tID:${reads.baseName}\\tPL:ONT\\tSM:${reads.baseName}" $ref $reads > ${reads.baseName}.sam
+    bwa mem -t ${params.threads} -R "@RG\\tID:${reads.baseName}\\tPL:ONT\\tSM:${reads.baseName}" $ref $reads > ${reads.baseName}.sam
     """
 }
 

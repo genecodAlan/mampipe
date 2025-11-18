@@ -8,21 +8,36 @@ params.ref = 'refSeq/*.fna'
 params.outdir = 'DUP_BUSCO_RESULTS'
 params.busco_threshold = 6.0
 params.lineage = 'mammalia_odb10'
+params.assembly_input = 'results/polished/polished_assembly/consensus.fasta'
+
+// Thread parameters
+params.threads = 8
 
 // For Google Cloud Batch, override with:
 // params.reads = 'gs://YOUR_BUCKET/data/*.fastq'
 // params.ref = 'gs://YOUR_BUCKET/refSeq/*.fna'
 // params.outdir = 'gs://YOUR_BUCKET/results'
+// params.assembly_input = 'gs://YOUR_BUCKET/results/polished/polished_assembly/consensus.fasta'
 
 
 
 
 workflow {
+    // Validate inputs exist
+    if (!file(params.reads).exists()) {
+        error "ERROR: Reads not found at ${params.reads}"
+    }
+    if (!file(params.ref).exists()) {
+        error "ERROR: Reference genome not found at ${params.ref}"
+    }
+    if (!file(params.assembly_input).exists()) {
+        error "ERROR: Assembly not found at ${params.assembly_input}"
+    }
+    
     // Define input channels
-
-reads = Channel.fromPath(params.reads).first()
-reference_genome = Channel.fromPath(params.ref)
-assembly = Channel.fromPath("results/polished/polished_assembly/consensus.fasta")
+    reads = Channel.fromPath(params.reads).first()
+    reference_genome = Channel.fromPath(params.ref)
+    assembly = Channel.fromPath(params.assembly_input)
 
 
 // Run BUSCO on initial assembly
@@ -42,12 +57,16 @@ final_assembly_ch = purged_assembly_ch.ifEmpty { assembly }
 // Proceed with scaffolding
 scaffolded_assembly_ch = scaffold_assembly(final_assembly_ch, reference_genome)
 
-scaffolded = Channel.fromPath("${params.outdir}/scaffolded/ragtag_output/ragtag.scaffold.fasta")
+// Extract the scaffolded fasta from the output directory
+scaffolded = scaffolded_assembly_ch.flatMap { dir -> 
+    file("${dir}/ragtag.scaffold.fasta")
+}
 busco_final_results = busco_final(scaffolded)
 
 }
 
 process busco_precheck {
+    label 'medium_mem'
     conda './envs/BUSCO.yml'
     tag { file(sample).baseName }
     publishDir "${params.outdir}/busco_precheck", mode: 'copy'
@@ -111,6 +130,7 @@ process test_result {
 }
 
 process purge_duplicates {
+    label 'medium_mem'
     conda './envs/Purge.yml'
    
     input:
@@ -121,11 +141,11 @@ process purge_duplicates {
    
     script:
     """
-    minimap2 -x map-ont -t 8 $assembly $reads | gzip -c > aln.paf.gz
+    minimap2 -x map-ont -t ${params.threads} $assembly $reads | gzip -c > aln.paf.gz
     pbcstat aln.paf.gz
     calcuts PB.stat > cutoffs  
     split_fa $assembly > split.fasta
-    minimap2 -x asm5 -DP -t 8 split.fasta split.fasta | gzip -c > self.paf.gz
+    minimap2 -x asm5 -DP -t ${params.threads} split.fasta split.fasta | gzip -c > self.paf.gz
     purge_dups -2 -T cutoffs -c PB.base.cov self.paf.gz > dups.bed
     get_seqs dups.bed $assembly > purged.fa
     mkdir -p purged_output && mv purged.fa purged_output/
@@ -133,6 +153,7 @@ process purge_duplicates {
 }
 
 process scaffold_assembly {
+    label 'medium_mem'
     conda './envs/RagTag.yml'
     tag { file(assembly).baseName }
     publishDir "${params.outdir}/scaffolded", mode: 'copy'
@@ -151,6 +172,7 @@ process scaffold_assembly {
 }   
 
 process busco_final {
+    label 'medium_mem'
     conda './envs/BUSCO.yml'
     tag { file(sample).baseName }
     publishDir "${params.outdir}/FINAL_BUSCO", mode: 'copy'

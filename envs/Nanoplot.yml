@@ -3,4 +3,10 @@ channels:
   - conda-forge
   - bioconda
   - defaults
-prefix: /home/alanr/miniconda3/envs/Nanoplot
+dependencies:
+  - python>=3.7
+  - nanoplot
+  - numpy
+  - pandas
+  - matplotlib
+  - seaborn

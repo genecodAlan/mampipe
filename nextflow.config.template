@@ -1,0 +1,40 @@
+// Local execution configuration
+conda {
+  enabled = true
+  autoActivate = true
+  cacheable = true
+}
+
+// Uncomment and configure for Google Cloud Batch execution
+/*
+process {
+    executor = 'google-batch'
+    container = 'gcr.io/YOUR_PROJECT_ID/mampipe:latest'
+    workDir = 'gs://YOUR_BUCKET_NAME/work'
+}
+
+google {
+    project = 'YOUR_PROJECT_ID'
+    region = 'us-central1'
+    
+    batch {
+        // Use spot instances for cost savings
+        spot = true
+        
+        // Boot disk size
+        bootDiskSize = '50 GB'
+        
+        // Network settings
+        network = 'default'
+        subnetwork = 'default'
+    }
+}
+
+// Enable conda in container
+conda {
+  enabled = true
+  autoActivate = true
+  cacheable = true
+  cacheDir = '/tmp/conda-cache'
+}
+*/

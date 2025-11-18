@@ -1,0 +1,6 @@
+name: Nanoplot
+channels:
+  - conda-forge
+  - bioconda
+  - defaults
+prefix: /home/alanr/miniconda3/envs/Nanoplot

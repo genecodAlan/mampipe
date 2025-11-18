@@ -1,0 +1,186 @@
+#!/usr/bin/env nextflow
+
+nextflow.enable.dsl=2
+
+include { busco_precheck; check_busco_dup; read_dup_score; purge_duplicates; scaffold_assembly; busco_final } from './Post_Assembly.nf'
+
+// Configure these parameters for your Google Cloud setup
+params.reads = 'gs://YOUR_BUCKET_NAME/data/*.fastq'
+params.ref = 'gs://YOUR_BUCKET_NAME/refSeq/*.fna'
+params.outdir = 'gs://YOUR_BUCKET_NAME/results'
+params.busco_threshold = 6.0
+params.lineage = 'mammalia_odb10'  // Change to appropriate lineage
+
+workflow {
+    reads = Channel.fromPath(params.reads)
+    
+    // Quality control and filtering
+    pre_chopped_results = plot_reads(reads)
+    chopped_reads = chopper(reads)
+    chopped_plot = chopped_plot_reads(chopped_reads)
+    
+    // Assembly and polishing
+    assembled_reads = assemble_long_reads(chopped_reads)
+    polished_assembly = polish_assembly(chopped_reads, assembled_reads)
+    reference_genome = Channel.fromPath(params.ref)
+    
+    // BUSCO quality assessment
+    busco_results_ch = busco_precheck(polished_assembly)
+    dup_score_file = check_busco_dup(busco_results_ch)
+    dup_score_value = read_dup_score(dup_score_file)
+    
+    // Conditional purging based on duplication threshold
+    decision_ch = polished_assembly
+        .combine(chopped_reads)
+        .combine(dup_score_value)
+        .map { assembly, reads, score -> tuple(assembly, reads, score) }
+    
+    decision_ch
+        .branch {
+            high_dup: it[2].toDouble() > params.busco_threshold
+            low_dup: it[2].toDouble() <= params.busco_threshold
+        }
+        .set { branched_ch }
+    
+    purged_assembly_ch = purge_duplicates(branched_ch.high_dup)
+    original_assembly_ch = branched_ch.low_dup
+        .map { assembly, reads, score -> assembly }
+    
+    final_assembly_ch = purged_assembly_ch.mix(original_assembly_ch)
+    
+    // Scaffolding
+    scaffold_assembly(final_assembly_ch, reference_genome)
+}
+
+process chopper{
+    conda './envs/Chopper.yml'
+    tag { file(sample).baseName }
+    publishDir "${params.outdir}/chopped", mode: 'copy'
+
+    input:
+    path sample
+
+    output:
+    path "${sample.baseName}_chopped.fastq"
+
+    script:
+    """
+    chopper -q 10 -l 500 -i $sample > ${sample.baseName}_chopped.fastq
+    """
+}
+
+process plot_reads{
+    conda './envs/Nanoplot.yml'
+    tag { file(sample).baseName }
+    publishDir "${params.outdir}/read_plots", mode: 'copy'
+
+    input:
+    path sample
+    output:
+    path "read_length_distribution"
+    script:
+    """
+    NanoPlot --fastq $sample --plots dot -o read_length_distribution    
+    """
+}
+
+process chopped_plot_reads{
+    conda './envs/Nanoplot.yml'
+    tag { file(sample).baseName }
+    publishDir "${params.outdir}/read_plots", mode: 'copy'
+
+    input:
+    path sample
+    output:
+    path "chopped_read_length_distribution"
+    script:
+    """
+    NanoPlot --fastq $sample --plots dot -o chopped_read_length_distribution    
+    """
+}
+
+process assemble_long_reads {
+    conda './envs/Flye.yml'
+    tag { file(sample).baseName }
+    publishDir "${params.outdir}/assembly", mode: 'copy'
+
+    input:
+    path sample
+
+    output:
+    path "assembly"
+
+    script:
+    """
+    flye --nano-raw $sample --out-dir assembly --threads 4
+    """
+}
+
+process polish_assembly {
+    tag { file(sample).baseName }
+    publishDir "${params.outdir}/polished", mode: 'copy'
+
+    input:
+    path sample
+    path assembled_fasta
+
+    output:
+    path "polished_assembly"
+
+    script:
+    """
+    medaka_consensus -i $sample -d $assembled_fasta -o polished_assembly -t 4 -m r1041_e82_400bps_fast_g632
+    """
+}
+
+process bwa_index {
+    label 'Index_Reference_Genome_Map_BWA'
+    conda './envs/vcf_env.yml'
+    tag "$ref.baseName"
+    
+    input:
+        path ref
+    
+    output:
+        path ref, emit: indexed_ref
+        path "${ref}.*", emit: index_files
+    
+    script:
+    """
+    bwa index $ref
+    """
+}
+
+process assess_quality{ 
+    conda './envs/Quast.yml'
+    tag { file(sample).baseName }
+    publishDir "${params.outdir}/quality_assessment", mode: 'copy'  
+    input:
+    path sample
+    path reference_genome
+    output:
+    path "quast_results"
+    script:
+    """
+    export LC_ALL=C.UTF-8
+    export LANG=C.UTF-8
+    quast $sample -r $reference_genome -o quast_results --threads 4
+    """
+}
+
+process annotate_genome {
+    conda './envs/Braker.yml'
+    tag { file(assembly).baseName }
+    publishDir "${params.outdir}/annotation", mode: 'copy'
+
+    input:
+    path assembly
+
+    output:
+    path "annotated_genome.gff3"
+
+    script:
+    """
+    braker.p1 --genome=$assembly --species=mammal --softmasking --cores=4
+    """
+}

@@ -1,0 +1,54 @@
+# Nextflow work directories
+work/
+.nextflow/
+.nextflow.log*
+
+# Results and data directories
+results/
+WGS_results/
+DUP_BUSCO_RESULTS/
+vfc_results/
+data/
+refSeq/
+Storage/
+
+# Conda environments
+envs/.conda/
+*.conda/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+
+# OS files
+.DS_Store
+Thumbs.db
+*.Zone.Identifier
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Logs
+*.log
+
+# Temporary files
+*.tmp
+*.temp
+dag-*.html
+
+# Miniconda installer
+Miniconda3-*.sh
+
+# Config backups
+Draft_Config
+nextflow (3).config
+nextflow (3).configZone.Identifier
+batch_main.nfZone.Identifier
+batch_Post_assembly.nfZone.Identifier
